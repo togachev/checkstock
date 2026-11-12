@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8" />
+        <title>CheckStock</title>
+        <!-- Bootstrap CSS -->
+        <link href="/static/bootstrap.min.css" rel="stylesheet" />
+        <!-- Bootstrap Icons -->
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"
+        />
+        <style>
+            body {
+                padding: 20px;
+                background-color: #f4f6f8;
+            }
+            .card {
+                margin-bottom: 20px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+                border: none;
+            }
+            .card-header {
+                font-weight: 600;
+                border-bottom: none;
+            }
+            .table th {
+                background-color: #f8f9fa;
+                font-weight: 600;
+                color: #495057;
+            }
+            .table td,
+            .table th {
+                vertical-align: middle;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container-fluid">
+            <h2 class="mb-4 fw-bold text-dark">
+                📦 CheckStock — Где сейчас товар?
+            </h2>
+
+            <!-- Сводка (Dashboard) -->
+            <div class="row mb-4 text-center">
+                <div class="col-md-4">
+                    <div class="card bg-primary text-white p-3">
+                        <h5 class="mb-0">
+                            <i class="bi bi-box-seam"></i> Всего физически:
+                            <b
+                                >{{ stocks | sum(attribute='physical_qty') |
+                                default(0) }}</b
+                            >
+                            шт.
+                        </h5>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-warning text-dark p-3">
+                        <h5 class="mb-0">
+                            <i class="bi bi-lock"></i> В резерве FBS:
+                            <b
+                                >{{ stocks | sum(attribute='reserved_fbs_qty') |
+                                default(0) }}</b
+                            >
+                            шт.
+                        </h5>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-info text-dark p-3">
+                        <h5 class="mb-0">
+                            <i class="bi bi-truck"></i> В пути:
+                            <b
+                                >{{ in_transit | sum(attribute='qty') |
+                                default(0) }}</b
+                            >
+                            шт.
+                        </h5>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Управление складами -->
+            <div class="card">
+                <div
+                    class="card-header bg-dark text-white d-flex justify-content-between align-items-center"
+                >
+                    <span><i class="bi bi-building"></i> Склады (ФФ)</span>
+                    <form
+                        action="/warehouse/add"
+                        method="post"
+                        class="d-flex gap-2"
+                    >
+                        <input
+                            type="text"
+                            name="name"
+                            class="form-control form-control-sm"
+                            placeholder="Новый склад"
+                            required
+                        />
+                        <button
+                            class="btn btn-sm btn-success"
+                            onclick="
+                                this.disabled = true;
+                                this.form.submit();
+                            "
+                        >
+                            <i class="bi bi-plus-circle"></i> Добавить
+                        </button>
+                    </form>
+                </div>
+                <div class="card-body d-flex flex-wrap">
+                    {% for wh in warehouses %}
+                    <div
+                        class="card text-center shadow-sm m-2 {{ 'bg-secondary bg-opacity-10 text-muted' if wh.is_deleted else 'bg-white' }}"
+                        style="min-width: 160px"
+                    >
+                        <div class="card-body p-3">
+                            <strong class="fs-5">{{ wh.name }}</strong>
+                            <div class="mt-2">
+                                {% if wh.is_deleted %}
+                                <span class="badge bg-secondary"
+                                    ><i class="bi bi-archive"></i> Удалён
+                                    (Архив)</span
+                                >
+                                {% else %}
+                                <form
+                                    action="/warehouse/delete/{{ wh.id }}"
+                                    method="post"
+                                >
+                                    <button
+                                        class="btn btn-sm btn-outline-danger"
+                                        onclick="
+                                            this.disabled = true;
+                                            this.form.submit();
+                                        "
+                                    >
+                                        <i class="bi bi-trash"></i> Удалить
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Таблица остатков -->
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-list-columns"></i> Остатки и Резервы
+                </div>
+                <div class="card-body table-responsive p-0">
+                    <table
+                        class="table table-striped table-hover mb-0 text-center"
+                    >
+                        <thead>
+                            <tr>
+                                <th>Артикул</th>
+                                <th>Товар</th>
+                                <th>Склад</th>
+                                <th>Физически</th>
+                                <th>В резерве FBS</th>
+                                <th>Доступно</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in stocks %}
+                            <tr
+                                class="{{ 'table-secondary text-muted' if s.warehouse.is_deleted else '' }}"
+                            >
+                                <td>
+                                    <span class="badge bg-secondary"
+                                        >{{ s.product.sku }}</span
+                                    >
+                                </td>
+                                <td class="fw-bold">{{ s.product.name }}</td>
+                                <td>
+                                    {{ s.warehouse.name }} {% if
+                                    s.warehouse.is_deleted %}<span
+                                        class="badge bg-danger ms-1"
+                                        >Удалён</span
+                                    >{% endif %}
+                                </td>
+                                <td>{{ s.physical_qty }}</td>
+                                <td class="text-warning fw-bold">
+                                    {{ s.reserved_fbs_qty }}
+                                </td>
+                                <td
+                                    class="fw-bold {{ 'text-success' if (s.physical_qty - s.reserved_fbs_qty) > 0 else 'text-danger' }}"
+                                >
+                                    {{ s.physical_qty - s.reserved_fbs_qty }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Действия -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-info text-white">
+                            <i class="bi bi-box-arrow-in-down"></i> Приход /
+                            Перемещение
+                        </div>
+                        <div class="card-body">
+                            <form
+                                action="/receipt"
+                                method="post"
+                                class="row g-2 mb-4 border-bottom pb-4"
+                            >
+                                <h6 class="fw-bold">Приход на склад</h6>
+                                <div class="col-md-4">
+                                    <select
+                                        name="warehouse_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for w in active_warehouses %}
+                                        <option value="{{ w.id }}">
+                                            {{ w.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select
+                                        name="product_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for p in products %}
+                                        <option value="{{ p.id }}">
+                                            {{ p.sku }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <input
+                                        type="number"
+                                        name="qty"
+                                        class="form-control"
+                                        placeholder="Кол-во"
+                                        required
+                                        min="1"
+                                    />
+                                </div>
+                                <div class="col-md-2">
+                                    <button
+                                        class="btn btn-info w-100 text-white"
+                                        onclick="
+                                            this.disabled = true;
+                                            this.form.submit();
+                                        "
+                                    >
+                                        <i class="bi bi-check2-circle"></i>
+                                        Принять
+                                    </button>
+                                </div>
+                            </form>
+
+                            <form
+                                action="/transfer/send"
+                                method="post"
+                                class="row g-2"
+                            >
+                                <h6 class="fw-bold">Перемещение между ФФ</h6>
+                                <div class="col-md-3">
+                                    <select
+                                        name="from_wh_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        <option value="" disabled selected>
+                                            Откуда
+                                        </option>
+                                        {% for w in active_warehouses %}
+                                        <option value="{{ w.id }}">
+                                            {{ w.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <select
+                                        name="to_wh_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        <option value="" disabled selected>
+                                            Куда
+                                        </option>
+                                        {% for w in active_warehouses %}
+                                        <option value="{{ w.id }}">
+                                            {{ w.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <select
+                                        name="product_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for p in products %}
+                                        <option value="{{ p.id }}">
+                                            {{ p.sku }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-1">
+                                    <input
+                                        type="number"
+                                        name="qty"
+                                        class="form-control"
+                                        placeholder="Кол-во"
+                                        required
+                                        min="1"
+                                    />
+                                </div>
+                                <div class="col-md-2">
+                                    <button
+                                        class="btn btn-warning w-100"
+                                        onclick="
+                                            this.disabled = true;
+                                            this.form.submit();
+                                        "
+                                    >
+                                        <i class="bi bi-truck"></i> В путь
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-danger text-white">
+                            <i class="bi bi-box-seam"></i> FBS / FBO
+                        </div>
+                        <div class="card-body">
+                            <form
+                                action="/fbs/reserve"
+                                method="post"
+                                class="row g-2 mb-4 border-bottom pb-4"
+                            >
+                                <h6 class="fw-bold">Резерв FBS</h6>
+                                <div class="col-md-4">
+                                    <select
+                                        name="warehouse_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for w in active_warehouses %}
+                                        <option value="{{ w.id }}">
+                                            {{ w.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select
+                                        name="product_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for p in products %}
+                                        <option value="{{ p.id }}">
+                                            {{ p.sku }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <input
+                                        type="number"
+                                        name="qty"
+                                        class="form-control"
+                                        required
+                                        min="1"
+                                    />
+                                </div>
+                                <div class="col-md-2">
+                                    <button
+                                        class="btn btn-danger w-100"
+                                        onclick="
+                                            this.disabled = true;
+                                            this.form.submit();
+                                        "
+                                    >
+                                        <i class="bi bi-lock"></i> Резерв
+                                    </button>
+                                </div>
+                            </form>
+
+                            <form
+                                action="/fbs/ship"
+                                method="post"
+                                class="row g-2 mb-4 border-bottom pb-4"
+                            >
+                                <h6 class="fw-bold">
+                                    Отправка FBS (из резерва)
+                                </h6>
+                                <div class="col-md-4">
+                                    <select
+                                        name="warehouse_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for w in active_warehouses %}
+                                        <option value="{{ w.id }}">
+                                            {{ w.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select
+                                        name="product_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for p in products %}
+                                        <option value="{{ p.id }}">
+                                            {{ p.sku }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <input
+                                        type="number"
+                                        name="qty"
+                                        class="form-control"
+                                        required
+                                        min="1"
+                                    />
+                                </div>
+                                <div class="col-md-2">
+                                    <button
+                                        class="btn btn-outline-danger w-100"
+                                        onclick="
+                                            this.disabled = true;
+                                            this.form.submit();
+                                        "
+                                    >
+                                        <i class="bi bi-truck"></i> В путь
+                                    </button>
+                                </div>
+                            </form>
+
+                            <form
+                                action="/fbo/ship"
+                                method="post"
+                                class="row g-2"
+                            >
+                                <h6 class="fw-bold">Отправка FBO (на МП)</h6>
+                                <div class="col-md-4">
+                                    <select
+                                        name="warehouse_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for w in active_warehouses %}
+                                        <option value="{{ w.id }}">
+                                            {{ w.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select
+                                        name="product_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for p in products %}
+                                        <option value="{{ p.id }}">
+                                            {{ p.sku }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <input
+                                        type="number"
+                                        name="qty"
+                                        class="form-control"
+                                        required
+                                        min="1"
+                                    />
+                                </div>
+                                <div class="col-md-2">
+                                    <button
+                                        class="btn btn-outline-primary w-100"
+                                        onclick="
+                                            this.disabled = true;
+                                            this.form.submit();
+                                        "
+                                    >
+                                        <i class="bi bi-truck"></i> В путь
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Товары в пути -->
+            <div class="card mt-3">
+                <div class="card-header bg-secondary text-white">
+                    <i class="bi bi-truck"></i> В пути (Между ФФ / FBO / FBS)
+                </div>
+                <div class="card-body p-0">
+                    <table
+                        class="table table-sm table-bordered mb-0 text-center"
+                    >
+                        <thead>
+                            <tr>
+                                <th>Тип</th>
+                                <th>Товар</th>
+                                <th>Кол-во</th>
+                                <th>Откуда</th>
+                                <th>Куда</th>
+                                <th>Действие</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for op in in_transit %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-dark"
+                                        >{{ op.operation_type.value }}</span
+                                    >
+                                </td>
+                                <td>{{ op.product.sku }}</td>
+                                <td>{{ op.qty }}</td>
+                                <td>
+                                    {{ op.from_wh.name if op.from_wh else '-' }}
+                                </td>
+                                <td>
+                                    {{ op.to_wh.name if op.to_wh else ('МП FBO'
+                                    if op.operation_type.value == 'FBO_SHIP'
+                                    else 'Клиент FBS') }}
+                                </td>
+                                <td>
+                                    {% if op.operation_type.value == 'TRANSFER'
+                                    %}
+                                    <form
+                                        action="/transfer/receive/{{ op.id }}"
+                                        method="post"
+                                    >
+                                        <button
+                                            class="btn btn-sm btn-success"
+                                            onclick="
+                                                this.disabled = true;
+                                                this.form.submit();
+                                            "
+                                        >
+                                            <i class="bi bi-check-all"></i>
+                                            Принять
+                                        </button>
+                                    </form>
+                                    {% elif op.operation_type.value ==
+                                    'FBO_SHIP' %}
+                                    <form
+                                        action="/fbo/receive/{{ op.id }}"
+                                        method="post"
+                                    >
+                                        <button
+                                            class="btn btn-sm btn-outline-primary"
+                                            onclick="
+                                                this.disabled = true;
+                                                this.form.submit();
+                                            "
+                                        >
+                                            <i class="bi bi-check-all"></i>
+                                            Принять МП
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <span class="badge bg-info text-dark"
+                                        ><i class="bi bi-arrow-right"></i> В
+                                        пути к клиенту</span
+                                    >
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td
+                                    colspan="6"
+                                    class="text-center text-muted py-3"
+                                >
+                                    Нет товаров в пути
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- История -->
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <i class="bi bi-clock-history"></i> История операций
+                    (Завершенные)
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0 text-center">
+                        <thead>
+                            <tr>
+                                <th>Дата</th>
+                                <th>Тип</th>
+                                <th>Товар</th>
+                                <th>Кол-во</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for op in history %}
+                            <tr>
+                                <td>
+                                    {{ op.created_at.strftime('%Y-%m-%d %H:%M')
+                                    }}
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary"
+                                        >{{ op.operation_type.value }}</span
+                                    >
+                                </td>
+                                <td>{{ op.product.sku }}</td>
+                                <td>{{ op.qty }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td
+                                    colspan="4"
+                                    class="text-center text-muted py-3"
+                                >
+                                    История пуста
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
