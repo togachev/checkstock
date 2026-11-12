@@ -58,25 +58,16 @@ def startup():
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, db: Session = Depends(database.get_db)):
-    # Берем все склады (включая удаленные, чтобы показывать остатки в архиве)
     warehouses = db.query(models.Warehouse).all()
     products = db.query(models.Product).all()
-
-    # Доступные склады для выпадающих списков (только не удаленные)
     active_warehouses = [w for w in warehouses if not w.is_deleted]
-
-    # Остатки
     stocks = db.query(models.Stock).all()
-
-    # Товары в пути (незавершенные операции)
     in_transit = (
         db.query(models.Operation)
         .filter(models.Operation.status == models.OperationStatus.IN_TRANSIT)
         .order_by(models.Operation.created_at.desc())
         .all()
     )
-
-    # История (завершенные)
     history = (
         db.query(models.Operation)
         .filter(models.Operation.status == models.OperationStatus.COMPLETED)
@@ -106,11 +97,22 @@ def add_warehouse(name: str = Form(...), db: Session = Depends(database.get_db))
     return RedirectResponse("/", status_code=303)
 
 
+# НОВОЕ: Переименование склада
+@app.post("/warehouse/rename/{wh_id}")
+def rename_warehouse(
+    wh_id: int, new_name: str = Form(...), db: Session = Depends(database.get_db)
+):
+    wh = db.query(models.Warehouse).filter(models.Warehouse.id == wh_id).first()
+    if wh:
+        wh.name = new_name
+        db.commit()
+    return RedirectResponse("/", status_code=303)
+
+
 @app.post("/warehouse/delete/{wh_id}")
 def delete_warehouse(wh_id: int, db: Session = Depends(database.get_db)):
     wh = db.query(models.Warehouse).filter(models.Warehouse.id == wh_id).first()
     if wh:
-        # Мягкое удаление. Остатки сохраняются!
         wh.is_deleted = True
         db.commit()
     return RedirectResponse("/", status_code=303)
@@ -172,7 +174,7 @@ def transfer_send(
         qty=qty,
         from_wh_id=from_wh_id,
         to_wh_id=to_wh_id,
-        idempotency_key=str(uuid.uuid4()),  # В реальной форме генерируется на клиенте
+        idempotency_key=str(uuid.uuid4()),
     )
     db.add(op)
     db.commit()
@@ -183,7 +185,7 @@ def transfer_send(
 def transfer_receive(op_id: int, db: Session = Depends(database.get_db)):
     op = db.query(models.Operation).filter(models.Operation.id == op_id).first()
     if not op or op.status == models.OperationStatus.COMPLETED:
-        return RedirectResponse("/", status_code=303)  # Защита от повторного списания
+        return RedirectResponse("/", status_code=303)
 
     stock = (
         db.query(models.Stock)
@@ -220,6 +222,27 @@ def fbs_reserve(
         )
 
     stock.reserved_fbs_qty += qty
+    db.commit()
+    return RedirectResponse("/", status_code=303)
+
+
+# НОВОЕ: Отмена резерва FBS
+@app.post("/fbs/cancel")
+def fbs_cancel(
+    warehouse_id: int = Form(...),
+    product_id: int = Form(...),
+    qty: int = Form(...),
+    db: Session = Depends(database.get_db),
+):
+    stock = (
+        db.query(models.Stock)
+        .filter_by(warehouse_id=warehouse_id, product_id=product_id)
+        .first()
+    )
+    if not stock or stock.reserved_fbs_qty < qty:
+        raise HTTPException(400, "Недостаточно резерва FBS для отмены")
+
+    stock.reserved_fbs_qty -= qty
     db.commit()
     return RedirectResponse("/", status_code=303)
 
@@ -290,7 +313,6 @@ def fbo_ship(
 
 @app.post("/fbo/receive/{op_id}")
 def fbo_receive(op_id: int, db: Session = Depends(database.get_db)):
-    # Имитация приёмки маркетплейсом
     op = db.query(models.Operation).filter(models.Operation.id == op_id).first()
     if op and op.status == models.OperationStatus.IN_TRANSIT:
         op.status = models.OperationStatus.COMPLETED

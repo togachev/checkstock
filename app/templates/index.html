@@ -3,9 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <title>CheckStock</title>
-        <!-- Bootstrap CSS -->
         <link href="/static/bootstrap.min.css" rel="stylesheet" />
-        <!-- Bootstrap Icons -->
         <link
             rel="stylesheet"
             href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"
@@ -33,6 +31,9 @@
             .table th {
                 vertical-align: middle;
             }
+            .wh-card {
+                min-width: 220px;
+            }
         </style>
     </head>
     <body>
@@ -41,7 +42,7 @@
                 📦 CheckStock — Где сейчас товар?
             </h2>
 
-            <!-- Сводка (Dashboard) -->
+            <!-- Сводка -->
             <div class="row mb-4 text-center">
                 <div class="col-md-4">
                     <div class="card bg-primary text-white p-3">
@@ -113,8 +114,7 @@
                 <div class="card-body d-flex flex-wrap">
                     {% for wh in warehouses %}
                     <div
-                        class="card text-center shadow-sm m-2 {{ 'bg-secondary bg-opacity-10 text-muted' if wh.is_deleted else 'bg-white' }}"
-                        style="min-width: 160px"
+                        class="card text-center shadow-sm m-2 wh-card {{ 'bg-secondary bg-opacity-10 text-muted' if wh.is_deleted else 'bg-white' }}"
                     >
                         <div class="card-body p-3">
                             <strong class="fs-5">{{ wh.name }}</strong>
@@ -125,12 +125,36 @@
                                     (Архив)</span
                                 >
                                 {% else %}
+                                <!-- Переименование -->
+                                <form
+                                    action="/warehouse/rename/{{ wh.id }}"
+                                    method="post"
+                                    class="d-flex gap-1 mb-2"
+                                >
+                                    <input
+                                        type="text"
+                                        name="new_name"
+                                        class="form-control form-control-sm"
+                                        placeholder="Новое имя"
+                                        required
+                                    />
+                                    <button
+                                        class="btn btn-sm btn-outline-primary"
+                                        onclick="
+                                            this.disabled = true;
+                                            this.form.submit();
+                                        "
+                                    >
+                                        OK
+                                    </button>
+                                </form>
+                                <!-- Удаление -->
                                 <form
                                     action="/warehouse/delete/{{ wh.id }}"
                                     method="post"
                                 >
                                     <button
-                                        class="btn btn-sm btn-outline-danger"
+                                        class="btn btn-sm btn-outline-danger w-100"
                                         onclick="
                                             this.disabled = true;
                                             this.form.submit();
@@ -348,10 +372,11 @@
                             <i class="bi bi-box-seam"></i> FBS / FBO
                         </div>
                         <div class="card-body">
+                            <!-- Резерв -->
                             <form
                                 action="/fbs/reserve"
                                 method="post"
-                                class="row g-2 mb-4 border-bottom pb-4"
+                                class="row g-2 mb-3 border-bottom pb-3"
                             >
                                 <h6 class="fw-bold">Резерв FBS</h6>
                                 <div class="col-md-4">
@@ -402,10 +427,68 @@
                                 </div>
                             </form>
 
+                            <!-- Отмена резерва -->
+                            <form
+                                action="/fbs/cancel"
+                                method="post"
+                                class="row g-2 mb-3 border-bottom pb-3"
+                            >
+                                <h6 class="fw-bold text-secondary">
+                                    Отмена резерва FBS
+                                </h6>
+                                <div class="col-md-4">
+                                    <select
+                                        name="warehouse_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for w in active_warehouses %}
+                                        <option value="{{ w.id }}">
+                                            {{ w.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select
+                                        name="product_id"
+                                        class="form-select"
+                                        required
+                                    >
+                                        {% for p in products %}
+                                        <option value="{{ p.id }}">
+                                            {{ p.sku }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <input
+                                        type="number"
+                                        name="qty"
+                                        class="form-control"
+                                        required
+                                        min="1"
+                                    />
+                                </div>
+                                <div class="col-md-2">
+                                    <button
+                                        class="btn btn-outline-secondary w-100"
+                                        onclick="
+                                            this.disabled = true;
+                                            this.form.submit();
+                                        "
+                                    >
+                                        <i class="bi bi-unlock"></i> Отмена
+                                    </button>
+                                </div>
+                            </form>
+
+                            <!-- Отправка FBS -->
                             <form
                                 action="/fbs/ship"
                                 method="post"
-                                class="row g-2 mb-4 border-bottom pb-4"
+                                class="row g-2 mb-3 border-bottom pb-3"
                             >
                                 <h6 class="fw-bold">
                                     Отправка FBS (из резерва)
@@ -458,6 +541,7 @@
                                 </div>
                             </form>
 
+                            <!-- Отправка FBO -->
                             <form
                                 action="/fbo/ship"
                                 method="post"
